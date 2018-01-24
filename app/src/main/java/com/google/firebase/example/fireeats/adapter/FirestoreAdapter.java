@@ -16,11 +16,16 @@
  package com.google.firebase.example.fireeats.adapter;
 
 import android.support.v7.widget.RecyclerView;
+import android.util.Log;
+import android.view.ViewGroup;
 
+import com.google.firebase.firestore.DocumentChange;
 import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.EventListener;
 import com.google.firebase.firestore.FirebaseFirestoreException;
 import com.google.firebase.firestore.ListenerRegistration;
 import com.google.firebase.firestore.Query;
+import com.google.firebase.firestore.QuerySnapshot;
 
 import java.util.ArrayList;
 
@@ -35,7 +40,7 @@ import java.util.ArrayList;
  * more efficient implementation of a Firestore RecyclerView Adapter.
  */
 public abstract class FirestoreAdapter<VH extends RecyclerView.ViewHolder>
-        extends RecyclerView.Adapter<VH> {
+        extends RecyclerView.Adapter<VH> implements EventListener<QuerySnapshot>{
 
     private static final String TAG = "Firestore Adapter";
 
@@ -50,6 +55,9 @@ public abstract class FirestoreAdapter<VH extends RecyclerView.ViewHolder>
 
     public void startListening() {
         // TODO(developer): Implement
+        if(mQuery != null && mRegistration == null){
+            mRegistration= mQuery.addSnapshotListener(this);
+        }
     }
 
     public void stopListening() {
@@ -87,4 +95,51 @@ public abstract class FirestoreAdapter<VH extends RecyclerView.ViewHolder>
     protected void onError(FirebaseFirestoreException e) {};
 
     protected void onDataChanged() {}
+
+    @Override
+    public VH onCreateViewHolder(ViewGroup viewGroup, int i) {
+        return null;
+    }
+
+    @Override
+    public void onBindViewHolder(VH vh, int i) {
+
+    }
+
+    @Override
+    public void onEvent(QuerySnapshot documentSnapshots, FirebaseFirestoreException e) {
+        // Handle errors
+        if (e != null) {
+            Log.w(TAG, "onEvent:error", e);
+            return;
+        }
+
+        for(DocumentChange documentChange: documentSnapshots.getDocumentChanges()){
+            DocumentSnapshot documentSnapshot= documentChange.getDocument();
+
+            switch (documentChange.getType()){
+                case ADDED:
+                    mSnapshots.add(documentChange.getNewIndex(), documentSnapshot);
+                    notifyItemInserted(documentChange.getNewIndex());
+                    break;
+                case MODIFIED:
+                    if(documentChange.getNewIndex() == documentChange.getOldIndex()){
+                        //item changed but remained in same position
+                        mSnapshots.set(documentChange.getOldIndex(), documentSnapshot);
+                        notifyItemChanged(documentChange.getOldIndex());
+                    }else{
+                        mSnapshots.remove(documentChange.getOldIndex());
+                        mSnapshots.set(documentChange.getNewIndex(), documentSnapshot);
+                        notifyItemMoved(documentChange.getOldIndex(), documentChange.getNewIndex());
+                    }
+                    break;
+                case REMOVED:
+                    mSnapshots.remove(documentChange.getOldIndex());
+                    notifyItemRemoved(documentChange.getOldIndex());
+                    break;
+                default:break;
+            }
+        }
+        onDataChanged();
+    }
 }
